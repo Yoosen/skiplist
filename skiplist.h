@@ -7,7 +7,7 @@
 
 #define STORE_FILE "store/dumpFile"
 
-std::mutex mtx;		// 临界区互斥锁
+std::mutex mtx, mtx1;       // 临界区互斥锁
 std::string delimiter = ":";
 
 // 节点类
@@ -20,7 +20,7 @@ public:
 
     ~Node();
 
-    K get_key() const;	// 不允许更改 class 内成员
+    K get_key() const;  // 不允许更改 class 内成员
 
     V get_value() const;
 
@@ -85,6 +85,7 @@ public:
     void display_list();
     bool search_element(K);
     void delete_element(K);
+    int update_element(K, V, bool);  // ~ 定义一个更新键值对的接口
     void dump_file();
     void load_file();
     int size();
@@ -94,16 +95,16 @@ private:
     bool is_valid_string(const std::string& str);
 
 private:
-    int _max_level;	// 最大层数
+    int _max_level; // 最大层数
 
-    int _skip_list_level;	// 当前层数
+    int _skip_list_level;   // 当前层数
 
-    Node<K, V>* _header;	// 头节点
+    Node<K, V>* _header;    // 头节点
 
     std::ofstream _file_writer;
     std::ifstream _file_reader;
 
-    int _element_count;		// 跳表当前元素数
+    int _element_count;     // 跳表当前元素数
 };
 
 // 跳表类构造函数
@@ -185,6 +186,7 @@ int Skiplist<K, V>::insert_element(const K key, const V value) {
         int random_level = get_random_level();
 
         // 如果随机层数比当前的层数高时，比当前层高的前一个节点就是 _header
+        // 新建一层，而且每层都需要插入
         if(random_level > _skip_list_level) {
             for(int i = _skip_list_level + 1; i < random_level + 1; ++i) {
                 update[i] = _header;
@@ -204,7 +206,7 @@ int Skiplist<K, V>::insert_element(const K key, const V value) {
         }
 
         std::cout << "Successfully inserted key:" << key << ", value:" << value << std::endl;
-        _element_count++;	// 增加节点数
+        _element_count++;   // 增加节点数
     }
 
     mtx.unlock();
@@ -304,6 +306,49 @@ void Skiplist<K, V>::delete_element(K key) {
     return ;
 }
 
+// 添加了修改值的操作
+// 1. 如果当前键存在，更新值
+// 2. 如果当前键不存在，通过 flag 指示是否创建该键 (默认false)
+//  2.1 flag = true ：创建 key value
+//  2.2 flag = false : 返回键不存在
+// 返回值 1 表示更新成功, 返回值 0 表示创建成功, 返回值 -1 表示更新失败且创建失败
+template<typename K, typename V>
+int Skiplist<K, V>::update_element(const K key, const V value, bool flag = false) {
+    // 同 insert,delete 操作
+    mtx1.lock(); // 插入操作，加锁, 使用 mtx1
+    Node<K, V> *current = this->_header;
+    Node<K, V> *update[_max_level + 1];
+    memset(update, 0, sizeof(Node<K, V>*)*(_max_level + 1));  
+    for(int i = _skip_list_level; i >= 0; i--) {
+        while(current->forward[i] != NULL && current->forward[i]->get_key() < key) {
+            current = current->forward[i];  
+        }
+        update[i] = current; 
+    }
+    current = current->forward[0];
+    // 1. 插入元素已经存在
+    if (current != NULL && current->get_key() == key) {
+        std::cout << "key: " << key << ", exists" << std::endl;
+        std::cout << "old value : " << current->get_value() << " --> "; // ~ 打印 old value
+        current->set_value(value);  // 重新设置 value, 并打印输出。
+        std::cout << "new value : " << current->get_value() << std::endl;
+        mtx1.unlock();
+        return 1;  // 插入元素已经存在，只是修改操作，返回 1 说明更新成功
+    }
+    // 2. 如果插入的元素不存在
+    //  2.1 flag = true,允许更新创建操作,则使用 insert_element 添加
+    if (flag) {
+        Skiplist<K, V>::insert_element(key, value);
+        mtx1.unlock();
+        return 0;  // 说明 key 不存在，但是创建了它
+    }
+    //  2.1 flag = false, 不允许更新创建操作, 打印提示信息
+    else {
+        std::cout << key << " is not exist, please check your input !\n";
+        mtx1.unlock();
+        return -1; // 表示 key 不存在，并且不被允许创建
+    } 
+}
 
 // 展示跳表
 template<typename K, typename V>
@@ -330,7 +375,7 @@ void Skiplist<K, V>::dump_file() {
 
     std::cout << "dump_file--------------" << std::endl;
     _file_writer.open(STORE_FILE);
-    Node<K, V> *node = this->_header->forward[0];	// 第 0 层
+    Node<K, V> *node = this->_header->forward[0];   // 第 0 层
 
     while(node != NULL) {
         _file_writer << node->get_key() << ":" << node->get_value() << "\n";
