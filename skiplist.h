@@ -186,8 +186,8 @@ int Skiplist<K, V>::insert_element(const K key, const V value) {
         int random_level = get_random_level();
 
         // 如果随机层数比当前的层数高时，比当前层高的前一个节点就是 _header
-        // 新建一层，而且每层都需要插入
         if(random_level > _skip_list_level) {
+            // 新建一层，该节点在该层，也就是最高层的前一个是 _header
             for(int i = _skip_list_level + 1; i < random_level + 1; ++i) {
                 update[i] = _header;
             }
@@ -241,8 +241,9 @@ bool Skiplist<K, V>::search_element(K key) {
 
     Node<K, V> *current = _header;
 
-    // 从最高层开始
+    // 从最高层开始，查到最下层
     for(int i = _skip_list_level; i >= 0; --i) {
+		// 如果当前层 i 的 next 不为空，且它的值小于 target，则 p 往后走指向这一层 p 的 next
         while(current->forward[i] && current->forward[i]->get_key() < key) {
             current = current->forward[i];
         }
